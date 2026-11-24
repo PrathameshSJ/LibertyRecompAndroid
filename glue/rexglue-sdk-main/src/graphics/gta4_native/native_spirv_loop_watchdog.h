@@ -5,14 +5,23 @@
 // predicates in the control-flow state machine) ends the invocation instead of
 // running until the kernel resets the GPU.
 //
-// Each void function gets one Function-storage counter. Every loop header
-// increments it; once the budget is spent the header branches to a new block
-// that returns (single-block loops, whose header is the continue target, are
-// skipped). Returning (rather than leaving through the merge block) adds no
-// edge to the merge, so values that flow out of the loop by dominance stay
-// valid. A header ending in OpBranchConditional is split: the header tests the
-// budget and a new block repeats the original conditional branch, so OpPhis in
-// its targets name the new block as their predecessor.
+// Each void function gets one Function-storage counter, bumped once per
+// iteration. The rewrite keeps the module structured (spirv-val clean); a loop
+// header may only end in OpBranchConditional when one target is its merge
+// block, so the budget test never becomes the header's own branch:
+//
+// * Header ending in `OpBranch %body`: the header branches to a new guard
+//   block instead, which counts the iteration and is a proper selection,
+//     OpSelectionMerge %body
+//     OpBranchConditional %ok %body %expired      ; %expired: OpReturn
+//   Returning is a legal exit from the selection, no edge is added to the loop
+//   merge (values leaving the loop by dominance stay valid), and %body's OpPhis
+//   name the guard as their predecessor.
+// * Header ending in `OpBranchConditional %c %t %f` with %t or %f the merge
+//   block: the condition is widened in place so an exhausted budget takes that
+//   exit (%c || !%ok, or %c && %ok). No block or edge is added.
+// * Anything else (including a header that is its own continue target) is
+//   left unguarded and reported in skipped_loops.
 #include <cstdint>
 #include <optional>
 #include <unordered_map>
@@ -23,6 +32,7 @@ namespace rex::graphics::gta4_native {
 struct SpirvLoopWatchdogResult {
   std::vector<uint32_t> words;
   uint32_t guarded_loops = 0;
+  uint32_t skipped_loops = 0;
 };
 
 inline std::optional<SpirvLoopWatchdogResult> AddSpirvLoopWatchdog(const std::vector<uint32_t>& in,
@@ -30,20 +40,28 @@ inline std::optional<SpirvLoopWatchdogResult> AddSpirvLoopWatchdog(const std::ve
   constexpr uint16_t kOpTypeVoid = 19, kOpTypeBool = 20, kOpTypeInt = 21, kOpTypePointer = 32,
                      kOpConstant = 43, kOpFunction = 54, kOpFunctionEnd = 56, kOpVariable = 59,
                      kOpLoad = 61, kOpStore = 62, kOpLabel = 248, kOpBranch = 249,
-                     kOpBranchConditional = 250, kOpLoopMerge = 246, kOpReturn = 253,
-                     kOpIAdd = 128, kOpULessThan = 176, kOpPhi = 245;
-  constexpr uint32_t kStorageFunction = 7;
+                     kOpBranchConditional = 250, kOpLoopMerge = 246, kOpSelectionMerge = 247,
+                     kOpReturn = 253, kOpIAdd = 128, kOpULessThan = 176, kOpLogicalOr = 166,
+                     kOpLogicalAnd = 167, kOpLogicalNot = 168, kOpPhi = 245;
+  constexpr uint32_t kStorageFunction = 7, kSelectionControlNone = 0;
   if (in.size() < 5 || in[0] != 0x07230203u) return std::nullopt;
+
+  enum class Kind { kGuardBlock, kWidenTrueExit, kWidenFalseExit };
+  struct Guard {
+    Kind kind;
+    uint32_t guard_label = 0;  // kGuardBlock only
+  };
 
   uint32_t bound = in[3];
   uint32_t uint_type = 0, bool_type = 0, uint_function_pointer = 0, void_type = 0;
   size_t first_function = 0;
-  struct Split {
+  struct Rename {
     uint32_t header, guard;
   };
-  // Blocks targeted by a split header: their OpPhis must name the guard block.
-  std::unordered_map<uint32_t, Split> phi_renames;
-  std::unordered_map<size_t, uint32_t> guards;  // OpLoopMerge word index -> guard label
+  // Loop bodies entered through a new guard block: their OpPhis name the guard.
+  std::unordered_map<uint32_t, Rename> phi_renames;
+  std::unordered_map<size_t, Guard> guards;  // OpLoopMerge word index -> rewrite
+  uint32_t skipped = 0;
   bool void_function = false;
   uint32_t current_label = 0;
   for (size_t i = 5; i < in.size();) {
@@ -61,19 +79,27 @@ inline std::optional<SpirvLoopWatchdogResult> AddSpirvLoopWatchdog(const std::ve
       void_function = void_type && w[1] == void_type;
     }
     if (op == kOpLabel) current_label = w[1];
-    // A header that is its own continue target belongs to the continue
-    // construct, where a returning block would break post-dominance.
-    if (op == kOpLoopMerge && void_function && w[2] != current_label && i + count < in.size()) {
+    if (op == kOpLoopMerge && i + count < in.size()) {
+      const uint32_t merge = w[1], continue_target = w[2];
       const uint32_t* t = in.data() + i + count;
       const uint16_t t_op = uint16_t(t[0] & 0xFFFF);
-      if (t_op == kOpBranch) {
-        guards[i] = 0;
-      } else if (t_op == kOpBranchConditional) {
-        const uint32_t guard = bound++;
-        guards[i] = guard;
-        phi_renames[t[2]] = {current_label, guard};
-        phi_renames[t[3]] = {current_label, guard};
+      bool guarded = false;
+      // A header that is its own continue target belongs to the continue
+      // construct, where neither a guard block nor a returning block fits.
+      if (void_function && continue_target != current_label) {
+        if (t_op == kOpBranch && t[1] != merge && t[1] != continue_target &&
+            !phi_renames.count(t[1])) {
+          const uint32_t guard = bound++;
+          guards[i] = {Kind::kGuardBlock, guard};
+          phi_renames[t[1]] = {current_label, guard};
+          guarded = true;
+        } else if (t_op == kOpBranchConditional && t[2] != t[3] &&
+                   (t[2] == merge || t[3] == merge)) {
+          guards[i] = {t[2] == merge ? Kind::kWidenTrueExit : Kind::kWidenFalseExit};
+          guarded = true;
+        }
       }
+      if (!guarded) ++skipped;
     }
     i += count;
   }
@@ -102,12 +128,22 @@ inline std::optional<SpirvLoopWatchdogResult> AddSpirvLoopWatchdog(const std::ve
   emit_to(globals, kOpConstant, {uint_type, limit, budget});
 
   SpirvLoopWatchdogResult result;
+  result.skipped_loops = skipped;
   std::vector<uint32_t>& out = result.words;
   out.reserve(in.size() + in.size() / 6 + globals.size() + 64);
   out.insert(out.end(), in.begin(), in.begin() + 5);
 
   uint32_t counter = 0;
   bool in_function = false, first_block = false, counter_initialized = false;
+  // Counts one iteration; returns the id of `counter < budget` after the bump.
+  const auto emit_count = [&]() {
+    const uint32_t value = bound++, next = bound++, ok = bound++;
+    emit_to(out, kOpLoad, {uint_type, value, counter});
+    emit_to(out, kOpIAdd, {uint_type, next, value, one});
+    emit_to(out, kOpStore, {counter, next});
+    emit_to(out, kOpULessThan, {bool_type, ok, next, limit});
+    return ok;
+  };
   current_label = 0;
   for (size_t i = 5; i < in.size();) {
     const uint32_t count = in[i] >> 16;
@@ -131,24 +167,35 @@ inline std::optional<SpirvLoopWatchdogResult> AddSpirvLoopWatchdog(const std::ve
     }
 
     if (op == kOpLoopMerge && counter) {
-      if (const auto guard = guards.find(i); guard != guards.end()) {
+      if (const auto found = guards.find(i); found != guards.end()) {
+        const Guard& guard = found->second;
         const uint32_t* t = in.data() + i + count;
         const uint32_t t_count = t[0] >> 16;
-        const uint32_t value = bound++, next = bound++, ok = bound++, expired = bound++;
-        emit_to(out, kOpLoad, {uint_type, value, counter});
-        emit_to(out, kOpIAdd, {uint_type, next, value, one});
-        emit_to(out, kOpStore, {counter, next});
-        emit_to(out, kOpULessThan, {bool_type, ok, next, limit});
-        out.insert(out.end(), w, w + count);
-        if (guard->second) {
-          emit_to(out, kOpBranchConditional, {ok, guard->second, expired});
-          emit_to(out, kOpLabel, {guard->second});
-          out.insert(out.end(), t, t + t_count);
+        if (guard.kind == Kind::kGuardBlock) {
+          const uint32_t body = t[1], expired = bound++;
+          out.insert(out.end(), w, w + count);  // OpLoopMerge
+          emit_to(out, kOpBranch, {guard.guard_label});
+          emit_to(out, kOpLabel, {guard.guard_label});
+          const uint32_t ok = emit_count();
+          emit_to(out, kOpSelectionMerge, {body, kSelectionControlNone});
+          emit_to(out, kOpBranchConditional, {ok, body, expired});
+          emit_to(out, kOpLabel, {expired});
+          out.push_back(uint32_t(1) << 16 | kOpReturn);
         } else {
-          emit_to(out, kOpBranchConditional, {ok, t[1], expired});
+          const uint32_t ok = emit_count();
+          const uint32_t widened = bound++;
+          if (guard.kind == Kind::kWidenTrueExit) {
+            const uint32_t expired = bound++;
+            emit_to(out, kOpLogicalNot, {bool_type, expired, ok});
+            emit_to(out, kOpLogicalOr, {bool_type, widened, t[1], expired});
+          } else {
+            emit_to(out, kOpLogicalAnd, {bool_type, widened, t[1], ok});
+          }
+          out.insert(out.end(), w, w + count);  // OpLoopMerge
+          const size_t branch = out.size();
+          out.insert(out.end(), t, t + t_count);  // keeps any branch weights
+          out[branch + 1] = widened;
         }
-        emit_to(out, kOpLabel, {expired});
-        out.push_back(uint32_t(1) << 16 | kOpReturn);
         ++result.guarded_loops;
         i += count + t_count;
         continue;
