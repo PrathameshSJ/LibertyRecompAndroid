@@ -1,0 +1,15 @@
+diff --git a/CMakeLists.txt b/CMakeLists.txt
+index ada2b8f..ad70d7a 100644
+--- a/CMakeLists.txt
++++ b/CMakeLists.txt
+@@ -236,7 +236,9 @@ endif()
+ 
+ # CMake needs to find the right version of python, right from the beginning,
+ # otherwise, it will find the wrong version and fail later
+-find_host_package(PythonInterp 3 REQUIRED)
++# FindPythonInterp is unavailable under CMake 4 (CMP0148); use FindPython3.
++find_package(Python3 REQUIRED COMPONENTS Interpreter)
++set(PYTHON_EXECUTABLE "${Python3_EXECUTABLE}")
+ 
+ # Root directory for build-time generated include files
+ set(GLSLANG_GENERATED_INCLUDEDIR "${CMAKE_BINARY_DIR}/include")

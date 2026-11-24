@@ -278,6 +278,20 @@
           "after_sha256": "993aa2964aa8ba700de5784558b064ed82e13ccaa736b0a7b85d032a07698ff2"
         }
       ]
+    },
+    {
+      "name": "glslang-python3",
+      "path": "glue/rexglue-sdk-main/thirdparty/glslang",
+      "base_revision": "f4f1d8a352ca1908943aea2ad8c54b39b4879080",
+      "patch": "glslang-python3.patch",
+      "sha256": "8d3c61bdc8288f0a12f54a25d221d13cb97f95182aa3155ae5d67cc3aa63a33f",
+      "files": [
+        {
+          "path": "CMakeLists.txt",
+          "before_sha256": "2b22727f64dbcfc235b48ad50dbb02e34a30f4b82193dd6cc2d63a8cfae7261d",
+          "after_sha256": "02a33dc85aab92ffa8e09a4b9e15c9165bd47e6f6d4df9d17dc70ed8c72af94d"
+        }
+      ]
     }
   ],
   "legacy_manifests": [
