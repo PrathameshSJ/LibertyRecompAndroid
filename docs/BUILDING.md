@@ -25,7 +25,7 @@ For Arch Linux:
 sudo pacman -Syu --needed base-devel git python cmake ninja clang lld pkgconf curl zip unzip \
   autoconf automake libtool gtk3 libx11 libxrandr libxcursor libxi libxinerama libxext \
   libxkbcommon wayland wayland-protocols libdecor alsa-lib libpulse dbus libusb \
-  openssl vulkan-icd-loader vulkan-headers nasm
+  openssl vulkan-icd-loader vulkan-headers nasm directx-shader-compiler
 ```
 
 For Ubuntu/Debian, install the corresponding development packages:

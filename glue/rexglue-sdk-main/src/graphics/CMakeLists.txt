@@ -238,9 +238,17 @@ if(REXGLUE_USE_VULKAN)
             endif()
         endif()
     elseif(CMAKE_HOST_UNIX AND GTA4_NATIVE_DXC_ARCH STREQUAL "x64")
-        set(GTA4_NATIVE_DXC "${GTA4_NATIVE_DXC_ROOT}/bin/x64/dxc-linux")
-        if(NOT GTA4_NATIVE_DXC_LIBRARY_PATH)
-            set(GTA4_NATIVE_DXC_LIBRARY_PATH "${GTA4_NATIVE_DXC_ROOT}/lib/x64")
+        # The bundled DXC 1.8 segfaults on the Bink pixel shaders here too (see
+        # the macOS branch). Prefer a distribution DXC, which links its own
+        # libdxcompiler, and keep the bundled pair as the fallback.
+        find_program(GTA4_NATIVE_HOST_DXC NAMES dxc NO_CACHE)
+        if(GTA4_NATIVE_HOST_DXC AND NOT GTA4_NATIVE_DXC_LIBRARY_PATH)
+            set(GTA4_NATIVE_DXC "${GTA4_NATIVE_HOST_DXC}")
+        else()
+            set(GTA4_NATIVE_DXC "${GTA4_NATIVE_DXC_ROOT}/bin/x64/dxc-linux")
+            if(NOT GTA4_NATIVE_DXC_LIBRARY_PATH)
+                set(GTA4_NATIVE_DXC_LIBRARY_PATH "${GTA4_NATIVE_DXC_ROOT}/lib/x64")
+            endif()
         endif()
     endif()
 
