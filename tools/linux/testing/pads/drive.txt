@@ -1,0 +1,11 @@
+# Skip intro, then drive Roman's taxi around the docks for ~70 s.
+32 tap A
+36 tap A
+40 tap A
+46 trigger RT 1.0 70
+50 stick LX 0.6 6
+60 stick LX -0.7 5
+70 stick LX 0.8 4
+80 stick LX -0.5 6
+92 stick LX 0.7 5
+104 stick LX -0.6 4

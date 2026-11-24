@@ -1,3 +1,77 @@
+# Liberty Recompiled — Linux desktop port (fork)
+
+> This fork adds a **native Linux desktop build** of the Graine (ReXGlue) consumer that the
+> Android and macOS hosts already use. It is based on
+> [vaduur/LibertyRecompAndroid](https://github.com/vaduur/LibertyRecompAndroid) (hiatus) and the
+> upstream [OZORDI/LibertyRecomp](https://github.com/OZORDI/LibertyRecomp). Tested on Arch Linux,
+> Intel Arrow Lake integrated graphics (Mesa ANV), niri (Wayland), with an Xbox-style controller.
+> The rest of this README below the line is the original Android port's.
+
+**Credit:** the Linux port (every change on the `linux-port` branch, the launcher and the test
+tooling) was written by **Claude** (Anthropic's AI model, running in Claude Code), directed and
+play-tested by PrathameshSJ. All credit for the port goes to Claude; the original projects and
+their authors are credited above and below.
+
+### What the Linux port changes
+
+- **Linux host target**: the legacy `LibertyRecomp/` tree no longer builds against the current
+  runtime, so Linux builds the maintained `gta4-recomp` app as a plain executable
+  (`out/build/linux-release/LibertyRecomp/bin/LibertyRecomp`, resources in `../Resources`). The
+  Android offline service stubs are shared as `src/platform/offline_host_services.cpp`.
+- **Build fixes**: glslang under CMake 4 (reviewed dependency patch), snappy's SIMD feature
+  detection, `CMAKE_SYSTEM_PROCESSOR` in the Linux toolchain (it was empty, so `-mcmodel=large` and
+  other x86_64 settings were skipped), a distribution DXC for the Bink shaders (the bundled 1.8
+  segfaults), and staging `librexruntime.so` next to the executable.
+- **Runtime fixes** (these are bugs on every case-sensitive or Intel host, not just this machine):
+  - guest paths resolve across case-only duplicate folders (`interiors/Generic` vs `generic`); before
+    this, interiors never streamed in, the player fell through floors and the game crashed;
+  - the guest memory `/dev/shm` object is unlinked at creation; every crash or kill used to leak
+    ~4.5 GB of RAM until tmpfs filled up and boots died with SIGBUS;
+  - the SPIR-V loop watchdog now emits structured control flow (all 196 guarded loops pass
+    `spirv-val`; the old output was invalid and Intel's compiler can miscompile it into a GPU hang);
+  - fullscreen is re-requested after the window is mapped, so tiling Wayland compositors (niri)
+    no longer leave the game in a half-width column.
+
+### Build and play (Arch Linux)
+
+```bash
+sudo pacman -S --needed base-devel git python cmake ninja clang lld pkgconf curl zip unzip \
+  autoconf automake libtool gtk3 libx11 libxrandr libxcursor libxi libxinerama libxext \
+  libxkbcommon wayland wayland-protocols libdecor alsa-lib libpulse dbus libusb \
+  openssl vulkan-icd-loader vulkan-headers nasm directx-shader-compiler python-evdev mangohud
+git clone --depth 1 -b linux-port https://github.com/PrathameshSJ/LibertyRecompAndroid.git
+cd LibertyRecompAndroid && python3 tools/setup_repo.py
+cmake --preset linux-release && cmake --build --preset linux-release --target LibertyRecomp
+# First start installs from your own USA disc image and Title Update 8:
+out/build/linux-release/LibertyRecomp/bin/LibertyRecomp \
+  --install_game_source=/path/to/GTAIV.iso --install_update_source=/path/to/TU_1A581VI_000000K000000.0000000000205
+# Afterwards, use the settings launcher (presets, AA, draw distance, FPS overlay):
+tools/linux/gta4
+```
+
+The launcher passes settings as command-line cvars and stores them in
+`~/.config/liberty-recomp/launcher.json`; game data lives in `~/.local/share/LibertyRecomp`. For
+niri, `open-fullscreen true` on `app-id="LibertyRecomp"` (the launcher sets `SDL_APP_ID`) is a
+belt-and-braces window rule.
+
+### Known issues
+
+- **Intel HiZ GPU hang**: with HiZ enabled, a scene draw after the end-of-frame resolve hangs the
+  GPU on Intel (Mesa ANV). The launcher sets `INTEL_DEBUG=nohiz` by default; root cause open.
+- Community multiplayer, user music and Game Center are offline stubs, as on Android.
+- Performance on integrated graphics: ~45–60 FPS in early cutscenes at 720p with the
+  "Performance (iGPU)" preset (Arrow Lake iGPU, CPU in performance mode).
+
+### Testing tools (`tools/linux/testing`)
+
+`run_headless.sh` runs the game off-screen in `cage` with a hard timeout, logs, MangoHud frame
+times and screenshots; `padbot.py` is a virtual Xbox 360 controller that plays timed button
+scripts (`pads/`), e.g. skipping the intro and driving; `hang_probe.sh` bisects GPU hangs via the
+kernel log; `fps_summary.py` and `sheet.sh` summarize runs; `watchdog_bench/` validates the loop
+watchdog against dumped shaders with `spirv-val`.
+
+---
+
 <p align="center">
     <img src="docs/android/images/banner_android_v4.png" alt="Liberty Recompiled for Android" width="800"/>
 </p>

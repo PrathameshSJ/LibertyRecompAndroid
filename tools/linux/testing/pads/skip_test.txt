@@ -1,0 +1,8 @@
+# Learn cutscene skip + pause menu (pad is player 1).
+32 tap A
+36 tap A
+40 tap A
+48 tap START
+53 tap RB
+57 tap RB
+61 tap A
