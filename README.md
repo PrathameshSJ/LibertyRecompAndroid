@@ -56,8 +56,11 @@ belt-and-braces window rule.
 
 ### Known issues
 
-- **Intel HiZ GPU hang**: with HiZ enabled, a scene draw after the end-of-frame resolve hangs the
-  GPU on Intel (Mesa ANV). The launcher sets `INTEL_DEBUG=nohiz` by default; root cause open.
+- **Intel GPU hang (Mesa ANV)**: a scene draw after the end-of-frame resolve hangs the GPU when
+  HiZ fast clears are enabled. It needs the final resolve (SMAA/SSAA or any path that skips
+  present-from-surface) plus the 4x MSAA D32S8 depth/stencil attachment resolve; validation layers
+  report nothing. `INTEL_DEBUG=nofc` avoids it and keeps HiZ (~7% faster than `nohiz`); the
+  launcher sets it by default. Likely a driver bug; not yet reported upstream.
 - Community multiplayer, user music and Game Center are offline stubs, as on Android.
 - Performance on integrated graphics: ~45–60 FPS in early cutscenes at 720p with the
   "Performance (iGPU)" preset (Arrow Lake iGPU, CPU in performance mode).

@@ -674,6 +674,9 @@ build-codegen/
 *.py
 /tools/*.py
 !glue/rexglue-sdk-main/gta4-recomp/tools/derive_draw_distance_hooks.py
+# Linux launcher and test tooling are tracked.
+!tools/linux/**/*.py
+!tools/linux/**/*.sh
 !glue/rexglue-sdk-main/gta4-recomp/tools/derive_frontend_advanced_menu_layout.py
 !glue/rexglue-sdk-main/gta4-recomp/tools/verify_gta4_keyboard_consumers.py
 !tools/analyze_native_memory.py
