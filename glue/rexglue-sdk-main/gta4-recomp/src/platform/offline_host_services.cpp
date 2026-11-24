@@ -1,7 +1,8 @@
 /**
- * Android replacements for the services the macOS host implements in
- * Objective-C++ (Game Center, AVFoundation user music, microphone TCC) and
- * for the curl/OpenSSL community multiplayer backend.
+ * Offline replacements, shared by the Android and Linux hosts, for the
+ * services the macOS host implements in Objective-C++ (Game Center,
+ * AVFoundation user music, microphone TCC) and for the curl/OpenSSL community
+ * multiplayer backend.
  *
  * Every entry point reports "unavailable" so the title takes its existing
  * offline/no-music paths.
@@ -89,7 +90,7 @@ namespace LibertyRecomp::Network {
 
 rex::system::xam::LiveBackendServices CreateCommunityMultiplayerBackend(
     const rex::system::xam::LiveConfig&, const rex::system::xam::LiveIdentity&) {
-  REXLOG_WARN("Community multiplayer is not available on Android");
+  REXLOG_WARN("Community multiplayer is not available on this platform");
   return {};
 }
 

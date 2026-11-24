@@ -42,6 +42,15 @@ if(ANDROID)
     set(LIBERTY_RECOMP_GRAINE_ANDROID ON)
 endif()
 
+# Linux desktop does the same: the legacy LibertyRecomp/ tree no longer builds
+# against the current runtime.
+set(LIBERTY_RECOMP_GRAINE_LINUX OFF)
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux" AND NOT ANDROID AND
+   (NOT DEFINED LIBERTY_RECOMP_TARGET_PLATFORM OR
+    LIBERTY_RECOMP_TARGET_PLATFORM STREQUAL "desktop"))
+    set(LIBERTY_RECOMP_GRAINE_LINUX ON)
+endif()
+
 if(NOT LIBERTY_RECOMP_GRAINE_MAC)
     add_compile_definitions(FMT_USE_CONSTEVAL=0)
 endif()
@@ -197,6 +206,12 @@ endif()
 
 if(LIBERTY_RECOMP_GRAINE_ANDROID)
     message(STATUS "Android: building the pure Graine RexGlue consumer")
+    add_subdirectory("glue")
+    return()
+endif()
+
+if(LIBERTY_RECOMP_GRAINE_LINUX)
+    message(STATUS "Linux: building the pure Graine RexGlue consumer")
     add_subdirectory("glue")
     return()
 endif()

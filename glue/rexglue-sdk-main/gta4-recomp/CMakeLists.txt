@@ -65,6 +65,13 @@ set(GTA4_APP_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/crypto/rijndael-alg-fst.c"
 )
 
+# Title resources every desktop host ships next to the executable
+# (rex::filesystem::GetResourcesFolder()). Each host places them its own way.
+set(LIBERTY_BUTTON_PROMPT_VARIANTS
+    xbox360 xbox_one xbox_series_x ps3 ps4 ps5 switch steam_controller steam_deck)
+set(LIBERTY_VECTOR_FONT_NAMES font1 font2 font3)
+set(LIBERTY_VECTOR_FONT_EPISODES tlad tbogt)
+
 if(APPLE AND LIBERTY_RECOMP_TARGET_PLATFORM STREQUAL "desktop")
     find_package(Python3 3.10 REQUIRED COMPONENTS Interpreter)
     find_package(CURL REQUIRED)
@@ -82,8 +89,7 @@ if(APPLE AND LIBERTY_RECOMP_TARGET_PLATFORM STREQUAL "desktop")
     set(LIBERTY_BUTTON_PROMPT_SOURCE
         "${LIBERTY_RECOMP_WORKSPACE_ROOT}/LibertyRecompLib/private/button_prompts")
     set(LIBERTY_BUTTON_PROMPT_RESOURCES)
-    foreach(LIBERTY_BUTTON_PROMPT_VARIANT
-            xbox360 xbox_one xbox_series_x ps3 ps4 ps5 switch steam_controller steam_deck)
+    foreach(LIBERTY_BUTTON_PROMPT_VARIANT IN LISTS LIBERTY_BUTTON_PROMPT_VARIANTS)
         set(LIBERTY_BUTTON_PROMPT_RESOURCE
             "${LIBERTY_BUTTON_PROMPT_SOURCE}/${LIBERTY_BUTTON_PROMPT_VARIANT}/buttons_360.xtd")
         list(APPEND LIBERTY_BUTTON_PROMPT_RESOURCES "${LIBERTY_BUTTON_PROMPT_RESOURCE}")
@@ -94,7 +100,7 @@ if(APPLE AND LIBERTY_RECOMP_TARGET_PLATFORM STREQUAL "desktop")
     set(LIBERTY_VECTOR_FONT_RESOURCES)
     set(LIBERTY_VECTOR_FONT_SOURCE
         "${LIBERTY_RECOMP_WORKSPACE_ROOT}/LibertyRecompLib/font_atlases")
-    foreach(LIBERTY_VECTOR_FONT_NAME font1 font2 font3)
+    foreach(LIBERTY_VECTOR_FONT_NAME IN LISTS LIBERTY_VECTOR_FONT_NAMES)
         set(LIBERTY_VECTOR_FONT_RESOURCE
             "${LIBERTY_VECTOR_FONT_SOURCE}/${LIBERTY_VECTOR_FONT_NAME}.png")
         list(APPEND LIBERTY_VECTOR_FONT_RESOURCES "${LIBERTY_VECTOR_FONT_RESOURCE}")
@@ -106,8 +112,8 @@ if(APPLE AND LIBERTY_RECOMP_TARGET_PLATFORM STREQUAL "desktop")
     list(APPEND LIBERTY_VECTOR_FONT_RESOURCES "${LIBERTY_VECTOR_FONT_MANIFEST}")
     set_source_files_properties("${LIBERTY_VECTOR_FONT_MANIFEST}" PROPERTIES
         MACOSX_PACKAGE_LOCATION "Resources/font_atlases")
-    foreach(LIBERTY_VECTOR_FONT_EPISODE tlad tbogt)
-        foreach(LIBERTY_VECTOR_FONT_NAME font1 font2 font3)
+    foreach(LIBERTY_VECTOR_FONT_EPISODE IN LISTS LIBERTY_VECTOR_FONT_EPISODES)
+        foreach(LIBERTY_VECTOR_FONT_NAME IN LISTS LIBERTY_VECTOR_FONT_NAMES)
             set(LIBERTY_VECTOR_FONT_RESOURCE
                 "${LIBERTY_VECTOR_FONT_SOURCE}/${LIBERTY_VECTOR_FONT_EPISODE}/${LIBERTY_VECTOR_FONT_NAME}.png")
             list(APPEND LIBERTY_VECTOR_FONT_RESOURCES "${LIBERTY_VECTOR_FONT_RESOURCE}")
@@ -322,7 +328,7 @@ elseif(ANDROID)
 
     add_library(LibertyRecomp SHARED
         ${GTA4_ANDROID_SOURCES}
-        src/android/android_platform_stubs.cpp
+        src/platform/offline_host_services.cpp
         ${GENERATED_SOURCES}
     )
 
@@ -443,6 +449,110 @@ elseif(ANDROID)
             -Wno-backend-plugin)
         target_link_options(LibertyRecomp PRIVATE "-fprofile-use=${LIBERTY_ANDROID_PGO}")
     endif()
+elseif(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+    # Linux desktop: a plain executable on the same Vulkan/SDL3 runtime the
+    # Android host uses. Layout, matching GetResourcesFolder() (<exe>/../Resources):
+    #   <build>/LibertyRecomp/bin/LibertyRecomp   (+ GPU plugins, via $ORIGIN)
+    #   <build>/LibertyRecomp/Resources/...
+    set(GTA4_LINUX_SOURCES ${GTA4_APP_SOURCES})
+    # The community backend needs the curl/OpenSSL service stack the macOS host
+    # wires up; Linux starts offline like Android (offline_host_services.cpp).
+    list(REMOVE_ITEM GTA4_LINUX_SOURCES src/network/community_multiplayer.cpp)
+
+    add_executable(LibertyRecomp
+        ${GTA4_LINUX_SOURCES}
+        src/platform/offline_host_services.cpp
+        ${GENERATED_SOURCES}
+    )
+
+    # Same registrar exception as the other hosts: one huge straight-line
+    # function that only runs at startup.
+    set_property(SOURCE generated/gta4_register.cpp APPEND PROPERTY COMPILE_OPTIONS
+        "$<$<CONFIG:Release,RelWithDebInfo>:-O0>")
+
+    target_include_directories(LibertyRecomp PRIVATE
+        ${CMAKE_CURRENT_SOURCE_DIR}/src
+        ${CMAKE_CURRENT_SOURCE_DIR}/generated
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/crypto
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/imgui
+        ${CMAKE_CURRENT_SOURCE_DIR}/../thirdparty/inja/third_party/include
+    )
+    set_property(SOURCE src/gta4_native_hooks.cpp APPEND PROPERTY INCLUDE_DIRECTORIES
+        "${CMAKE_CURRENT_SOURCE_DIR}/../src")
+
+    set_source_files_properties(src/gta4_sony_feedback.cpp src/gta4_sony_event_hooks.cpp
+        PROPERTIES COMPILE_DEFINITIONS GTA4_SONY_PRIMARY_PLAYER_ALIAS)
+
+    set(LIBERTY_BUTTON_PROMPT_SOURCE
+        "${LIBERTY_RECOMP_WORKSPACE_ROOT}/LibertyRecompLib/private/button_prompts")
+    set(LIBERTY_VECTOR_FONT_SOURCE
+        "${LIBERTY_RECOMP_WORKSPACE_ROOT}/LibertyRecompLib/font_atlases")
+    set(LIBERTY_RPF_AES_KEY_SOURCE
+        "${LIBERTY_RECOMP_WORKSPACE_ROOT}/LibertyRecompLib/aes_key.bin")
+
+    target_compile_definitions(LibertyRecomp PRIVATE
+        GTA4_TOUCH_PRIMARY_PLAYER_ALIAS=1
+        GTA4_RECOMP_ASSET_XEX="${CMAKE_CURRENT_SOURCE_DIR}/assets/default_v8.xex"
+        GTA4_BUTTON_PROMPT_ASSET_ROOT="${LIBERTY_BUTTON_PROMPT_SOURCE}"
+        GTA4_RPF_AES_KEY_SOURCE="${LIBERTY_RPF_AES_KEY_SOURCE}"
+    )
+
+    target_link_libraries(LibertyRecomp PRIVATE
+        rex::runtime
+        xxHash::xxhash
+        SDL3::SDL3
+        utf8cpp
+        z
+    )
+
+    rexglue_configure_target(LibertyRecomp GPU_PLUGINS xenos gta4-native)
+    liberty_stage_vulkan_temporal_archive(LibertyRecomp)
+
+    set(LIBERTY_LINUX_APP_ROOT "${CMAKE_BINARY_DIR}/LibertyRecomp")
+    set_target_properties(LibertyRecomp PROPERTIES
+        RUNTIME_OUTPUT_DIRECTORY "${LIBERTY_LINUX_APP_ROOT}/bin")
+
+    # Stage exactly the files the macOS bundle ships (the source folders also
+    # hold authoring tools and review images).
+    set(LIBERTY_LINUX_RESOURCES "${LIBERTY_LINUX_APP_ROOT}/Resources")
+    set(LIBERTY_LINUX_RESOURCE_COMMANDS)
+    macro(liberty_linux_stage_resource source destination_dir)
+        list(APPEND LIBERTY_LINUX_RESOURCE_COMMANDS
+            COMMAND "${CMAKE_COMMAND}" -E make_directory "${destination_dir}"
+            COMMAND "${CMAKE_COMMAND}" -E copy_if_different "${source}" "${destination_dir}/")
+        set_property(TARGET LibertyRecomp APPEND PROPERTY LINK_DEPENDS "${source}")
+    endmacro()
+    foreach(variant IN LISTS LIBERTY_BUTTON_PROMPT_VARIANTS)
+        liberty_linux_stage_resource(
+            "${LIBERTY_BUTTON_PROMPT_SOURCE}/${variant}/buttons_360.xtd"
+            "${LIBERTY_LINUX_RESOURCES}/button_prompts/${variant}")
+    endforeach()
+    foreach(font IN LISTS LIBERTY_VECTOR_FONT_NAMES)
+        liberty_linux_stage_resource("${LIBERTY_VECTOR_FONT_SOURCE}/${font}.png"
+            "${LIBERTY_LINUX_RESOURCES}/font_atlases")
+    endforeach()
+    liberty_linux_stage_resource("${LIBERTY_VECTOR_FONT_SOURCE}/manifest.json"
+        "${LIBERTY_LINUX_RESOURCES}/font_atlases")
+    foreach(episode IN LISTS LIBERTY_VECTOR_FONT_EPISODES)
+        foreach(font IN LISTS LIBERTY_VECTOR_FONT_NAMES)
+            liberty_linux_stage_resource(
+                "${LIBERTY_VECTOR_FONT_SOURCE}/${episode}/${font}.png"
+                "${LIBERTY_LINUX_RESOURCES}/font_atlases/${episode}")
+        endforeach()
+        liberty_linux_stage_resource("${LIBERTY_VECTOR_FONT_SOURCE}/${episode}/manifest.json"
+            "${LIBERTY_LINUX_RESOURCES}/font_atlases/${episode}")
+    endforeach()
+    if(EXISTS "${LIBERTY_RPF_AES_KEY_SOURCE}")
+        liberty_linux_stage_resource("${LIBERTY_RPF_AES_KEY_SOURCE}" "${LIBERTY_LINUX_RESOURCES}")
+    else()
+        message(STATUS
+            "LibertyRecompLib/aes_key.bin is not present; the app will build "
+            "without the optional game-install key resource")
+    endif()
+    add_custom_command(TARGET LibertyRecomp POST_BUILD
+        ${LIBERTY_LINUX_RESOURCE_COMMANDS}
+        COMMENT "Staging Linux title resources"
+        VERBATIM)
 else()
     add_library(gta4_recomp INTERFACE)
     target_include_directories(gta4_recomp INTERFACE
