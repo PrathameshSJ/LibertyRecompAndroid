@@ -51,27 +51,44 @@ bool Entry::is_read_only() const {
 }
 
 Entry* Entry::GetChild(const std::string_view name) {
-  auto global_lock = global_critical_region_.Acquire();
-  auto it = std::find_if(children_.cbegin(), children_.cend(), [&](const auto& child) {
-    return rex::string::utf8_equal_case(child->name(), name);
-  });
-  if (it == children_.cend()) {
-    return nullptr;
-  }
-  return (*it).get();
+  const auto matches = GetChildrenIgnoringCase(name);
+  return matches.empty() ? nullptr : matches.front();
 }
 
-Entry* Entry::ResolvePath(const std::string_view path) {
-  // Walk the path, one separator at a time.
-  Entry* entry = this;
-  for (auto& part : rex::string::utf8_split_path(path)) {
-    entry = entry->GetChild(part);
-    if (!entry) {
-      // Not found.
-      return nullptr;
+std::vector<Entry*> Entry::GetChildrenIgnoringCase(const std::string_view name) {
+  auto global_lock = global_critical_region_.Acquire();
+  std::vector<Entry*> matches;
+  for (const auto& child : children_) {
+    if (!rex::string::utf8_equal_case(child->name(), name)) {
+      continue;
+    }
+    if (child->name() == name) {
+      matches.insert(matches.begin(), child.get());
+    } else {
+      matches.push_back(child.get());
     }
   }
-  return entry;
+  return matches;
+}
+
+namespace {
+
+Entry* ResolvePathParts(Entry* entry, const std::vector<std::string_view>& parts, size_t index) {
+  if (index == parts.size()) {
+    return entry;
+  }
+  for (Entry* candidate : entry->GetChildrenIgnoringCase(parts[index])) {
+    if (Entry* resolved = ResolvePathParts(candidate, parts, index + 1)) {
+      return resolved;
+    }
+  }
+  return nullptr;
+}
+
+}  // namespace
+
+Entry* Entry::ResolvePath(const std::string_view path) {
+  return ResolvePathParts(this, rex::string::utf8_split_path(path), 0);
 }
 
 Entry* Entry::IterateChildren(const rex::filesystem::WildcardEngine& engine,

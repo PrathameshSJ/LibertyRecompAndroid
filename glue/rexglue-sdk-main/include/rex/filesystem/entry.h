@@ -102,10 +102,18 @@ class Entry {
 
   bool is_read_only() const;
 
+  /// Child named @p name, compared case-insensitively as on the guest. An
+  /// exact-case match wins when a case-sensitive host holds several children
+  /// that differ only in case.
   Entry* GetChild(const std::string_view name);
+  /// Every child named @p name case-insensitively, the exact-case match first.
+  std::vector<Entry*> GetChildrenIgnoringCase(const std::string_view name);
   /// Walks @p path component-by-component starting from this entry.
   /// Returns this entry when @p path is empty (i.e. zero path components),
-  /// nullptr if any intermediate component does not exist.
+  /// nullptr if any intermediate component does not exist. When a component
+  /// matches several children that differ only in case (possible on a
+  /// case-sensitive host, e.g. "Generic" and "generic"), each is tried in
+  /// GetChildrenIgnoringCase order until the rest of the path resolves.
   Entry* ResolvePath(const std::string_view path);
 
   const std::vector<std::unique_ptr<Entry>>& children() const { return children_; }
