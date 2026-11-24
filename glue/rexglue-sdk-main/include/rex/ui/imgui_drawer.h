@@ -52,6 +52,9 @@ class ImGuiDrawer : public WindowInputListener, public UIDrawer {
 
   void AddDialog(ImGuiDialog* dialog);
   void RemoveDialog(ImGuiDialog* dialog);
+  // UI thread, at shutdown: closes every open dialog so threads waiting on
+  // one (XAM message boxes on the kernel host-task thread) are released.
+  void CloseAllDialogs();
   void RequestPaint();
   std::function<void()> CreateRepaintRequester();
 

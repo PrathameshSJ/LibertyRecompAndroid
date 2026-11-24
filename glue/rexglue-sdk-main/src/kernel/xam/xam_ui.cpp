@@ -82,12 +82,13 @@ X_RESULT xeXamDispatchDialog(T* dialog, std::function<X_RESULT(T*)> close_callba
     REX_KERNEL_STATE()->BroadcastNotification(0x9, true);
   };
   auto run = [dialog, close_callback]() -> X_RESULT {
-    X_RESULT result;
+    X_RESULT result = X_ERROR_CANCELLED;  // when the dialog is never shown
     dialog->set_close_callback(
         [&dialog, &result, &close_callback]() { result = close_callback(dialog); });
     rex::thread::Fence fence;
     rex::ui::WindowedAppContext* app_context = REX_KERNEL_STATE()->emulator()->app_context();
-    if (app_context &&
+    // During host shutdown the UI thread is waiting for this host task.
+    if (!REX_KERNEL_STATE()->system_dialogs_blocked() && app_context &&
         app_context->CallInUIThreadSynchronous([&dialog, &fence]() { dialog->Then(&fence); })) {
       ++xam_dialogs_shown_;
       fence.Wait();
@@ -124,12 +125,13 @@ X_RESULT xeXamDispatchDialogEx(T* dialog,
   };
   auto run = [dialog, close_callback](uint32_t& extended_error, uint32_t& length) -> X_RESULT {
     rex::ui::WindowedAppContext* app_context = REX_KERNEL_STATE()->emulator()->app_context();
-    X_RESULT result;
+    X_RESULT result = X_ERROR_CANCELLED;  // when the dialog is never shown
     dialog->set_close_callback([&dialog, &result, &extended_error, &length, &close_callback]() {
       result = close_callback(dialog, extended_error, length);
     });
     rex::thread::Fence fence;
-    if (app_context &&
+    // During host shutdown the UI thread is waiting for this host task.
+    if (!REX_KERNEL_STATE()->system_dialogs_blocked() && app_context &&
         app_context->CallInUIThreadSynchronous([&dialog, &fence]() { dialog->Then(&fence); })) {
       ++xam_dialogs_shown_;
       fence.Wait();

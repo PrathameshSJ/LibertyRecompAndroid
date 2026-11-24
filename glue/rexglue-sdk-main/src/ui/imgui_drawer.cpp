@@ -83,6 +83,13 @@ void ImGuiDrawer::AddDialog(ImGuiDialog* dialog) {
   dialogs_.push_back(dialog);
 }
 
+void ImGuiDrawer::CloseAllDialogs() {
+  // Each dialog's destructor removes it from dialogs_.
+  while (!dialogs_.empty()) {
+    dialogs_.back()->CloseImmediately();
+  }
+}
+
 void ImGuiDrawer::RemoveDialog(ImGuiDialog* dialog) {
   assert_not_null(dialog);
   auto it = std::find(dialogs_.cbegin(), dialogs_.cend(), dialog);

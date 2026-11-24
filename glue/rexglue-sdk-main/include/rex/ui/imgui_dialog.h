@@ -37,6 +37,11 @@ class ImGuiDialog {
   // A fence to signal when the dialog is closed.
   void Then(rex::thread::Fence* fence);
 
+  // UI thread: closes the dialog now rather than on its next Draw (runs
+  // OnClose, deletes the dialog and signals its fences). For shutdown, when
+  // nothing will draw it again.
+  void CloseImmediately();
+
   void Draw();
   virtual bool WantsContinuousRepaint() const { return true; }
   // Safe from notification threads; no direct ImGui or Window access there.

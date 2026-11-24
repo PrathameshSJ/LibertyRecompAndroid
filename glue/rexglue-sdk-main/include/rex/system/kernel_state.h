@@ -299,6 +299,12 @@ class KernelState {
   // This DOES NOT RETURN if called from a guest thread!
   void TerminateTitle();
   bool is_terminating_title() const { return terminating_title_.load(std::memory_order_acquire); }
+  // Host shutdown: XAM UI requests after this complete as cancelled instead of
+  // waiting on a UI thread that is itself waiting for the host tasks to end.
+  void BlockSystemDialogs() { system_dialogs_blocked_.store(true, std::memory_order_release); }
+  bool system_dialogs_blocked() const {
+    return system_dialogs_blocked_.load(std::memory_order_acquire);
+  }
 
   void RegisterThread(XThread* thread);
   void UnregisterThread(XThread* thread);
@@ -437,6 +443,7 @@ class KernelState {
 
   std::atomic<bool> dispatch_thread_running_;
   std::atomic<bool> terminating_title_{false};
+  std::atomic<bool> system_dialogs_blocked_{false};
   object_ref<XHostThread> dispatch_thread_;
   // Must be guarded by the global critical region.
   util::NativeList dpc_list_;

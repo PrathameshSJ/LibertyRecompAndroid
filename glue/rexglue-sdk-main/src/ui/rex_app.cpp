@@ -598,6 +598,13 @@ void ReXApp::OnClosing(ui::UIEvent& e) {
   shutting_down_.store(true, std::memory_order_release);
   input_capture_->stopping.store(true, std::memory_order_release);
   if (runtime_ && runtime_->kernel_state()) {
+    // A XAM dialog (e.g. "controller disconnected") keeps a kernel host task
+    // waiting on this UI thread, and TerminateTitle waits for host tasks:
+    // refuse new dialogs, release the open ones, then terminate.
+    runtime_->kernel_state()->BlockSystemDialogs();
+    if (imgui_drawer_) {
+      imgui_drawer_->CloseAllDialogs();
+    }
     runtime_->kernel_state()->TerminateTitle();
   }
   // Hard-exit rather than run subsystem teardown, which can deadlock on a host

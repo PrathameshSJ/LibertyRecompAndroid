@@ -38,6 +38,11 @@ void ImGuiDialog::Close() {
   has_close_pending_ = true;
 }
 
+void ImGuiDialog::CloseImmediately() {
+  OnClose();
+  delete this;
+}
+
 ImGuiIO& ImGuiDialog::GetIO() {
   return imgui_drawer()->GetIO();
 }
