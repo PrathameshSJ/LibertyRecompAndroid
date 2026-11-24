@@ -393,9 +393,14 @@ FileMappingHandle CreateFileMappingHandle(const std::filesystem::path& path, siz
   if (ret < 0) {
     return kFileMappingHandleInvalid;
   }
+  // Unlink right away, as memory_ios.cpp does: views are mapped through the fd,
+  // never reopened by name, and the kernel frees the object once the last
+  // mapping and fd go away. Unlinking only in CloseFileMappingHandle leaked a
+  // multi-GB /dev/shm file (RAM) for every crashed or killed process, until
+  // tmpfs filled and the next guest-memory write died with SIGBUS.
+  shm_unlink(full_path.c_str());
   if (ftruncate64(ret, static_cast<off_t>(length)) != 0) {
     close(ret);
-    shm_unlink(full_path.c_str());
     return kFileMappingHandleInvalid;
   }
   return static_cast<FileMappingHandle>(ret);
