@@ -248,10 +248,12 @@ function(rexglue_configure_target target_name)
             VERBATIM)
     endif()
 
-    if(APPLE)
+    if(APPLE OR (UNIX AND NOT ANDROID))
         # TARGET_RUNTIME_DLLS doesn't reliably enumerate imported dylibs in the
         # installed-SDK consumer case, so stage the known shared runtime pieces
-        # explicitly next to the host binary.
+        # explicitly next to the host binary. On Linux the host's RPATH is
+        # $ORIGIN, so they must sit beside it too. (Android packages every .so
+        # into the APK's native library directory itself.)
         foreach(_runtime_target rex::runtime TracyClient)
             if(TARGET ${_runtime_target})
                 add_custom_command(TARGET ${target_name} POST_BUILD
