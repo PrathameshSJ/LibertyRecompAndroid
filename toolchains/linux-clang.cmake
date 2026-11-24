@@ -35,16 +35,24 @@ if(NOT _VCPKG_LINUX_CLANG_TOOLCHAIN)
     SET(CMAKE_ASM_COMPILER clang)
 
     # Pick target architecture for clang
-    if(VCPKG_TARGET_ARCHITECTURE STREQUAL "x64")
+    # VCPKG_TARGET_ARCHITECTURE is only defined while vcpkg builds a port. For
+    # the project itself fall back to the preset's triplet; otherwise
+    # CMAKE_SYSTEM_PROCESSOR stays empty and every x86_64-specific setting
+    # (-mcmodel=large for the recompiled executable, -msse4.1) is skipped.
+    set(_linux_clang_arch "${VCPKG_TARGET_ARCHITECTURE}")
+    if(NOT _linux_clang_arch AND VCPKG_TARGET_TRIPLET MATCHES "^([^-]+)-")
+        set(_linux_clang_arch "${CMAKE_MATCH_1}")
+    endif()
+    if(_linux_clang_arch STREQUAL "x64")
         set(CMAKE_SYSTEM_PROCESSOR x86_64 CACHE STRING "")
         set(CLANG_TARGET x86_64-unknown-linux-gnu)
-    elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "x86")
+    elseif(_linux_clang_arch STREQUAL "x86")
         set(CMAKE_SYSTEM_PROCESSOR i686 CACHE STRING "")
         set(CLANG_TARGET i686-unknown-linux-gnu)
-    elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm")
+    elseif(_linux_clang_arch STREQUAL "arm")
         set(CMAKE_SYSTEM_PROCESSOR armv7l CACHE STRING "")
         set(CLANG_TARGET armv7-unknown-linux-gnueabihf)
-    elseif(VCPKG_TARGET_ARCHITECTURE STREQUAL "arm64")
+    elseif(_linux_clang_arch STREQUAL "arm64")
         set(CMAKE_SYSTEM_PROCESSOR aarch64 CACHE STRING "")
         set(CLANG_TARGET aarch64-unknown-linux-gnu)
     endif()
