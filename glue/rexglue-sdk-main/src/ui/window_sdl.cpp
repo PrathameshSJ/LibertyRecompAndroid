@@ -231,6 +231,14 @@ bool WindowSDL::OpenImpl() {
     return false;
   }
 
+  // Tiling Wayland compositors (niri, for one) can tile the window by its
+  // initial configure and drop the fullscreen state requested before it was
+  // mapped. Ask again now that the window is shown; for a window that already
+  // is fullscreen this is a no-op.
+  if (IsFullscreen() && !SDL_SetWindowFullscreen(sdl_window_, true)) {
+    REXLOG_WARN("SDL_SetWindowFullscreen after show failed: {}", SDL_GetError());
+  }
+
   // Fullscreen transitions may be asynchronous. Synchronize when possible so
   // the first surface observes final geometry, but a timeout only means the
   // transition is still pending. SDL window events will update the surface.
