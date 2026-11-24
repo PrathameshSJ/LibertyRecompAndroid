@@ -191,7 +191,18 @@ target_compile_options(spdlog PRIVATE -w)
 set(SNAPPY_BUILD_TESTS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 set(SNAPPY_INSTALL ON CACHE BOOL "" FORCE)
+# snappy's config.h feature checks only see CMAKE_REQUIRED_FLAGS, not this
+# directory's compile options (such as a consumer's -march baseline). Without
+# them config.h can disable SSSE3 while snappy.cc is still compiled with
+# __AVX__ defined, and its AVX copy path then lacks <immintrin.h>.
+get_directory_property(_rex_snappy_compile_options COMPILE_OPTIONS)
+list(FILTER _rex_snappy_compile_options EXCLUDE REGEX "\\$<")
+set(_rex_saved_required_flags "${CMAKE_REQUIRED_FLAGS}")
+string(JOIN " " CMAKE_REQUIRED_FLAGS ${CMAKE_REQUIRED_FLAGS} ${_rex_snappy_compile_options})
 add_subdirectory(snappy)
+set(CMAKE_REQUIRED_FLAGS "${_rex_saved_required_flags}")
+unset(_rex_saved_required_flags)
+unset(_rex_snappy_compile_options)
 target_compile_options(snappy PRIVATE -w)
 if(APPLE AND IS_ARM64)
     target_compile_options(snappy PRIVATE -march=armv8-a+crc)
